@@ -584,71 +584,6 @@ compute_multiples(ulong n,GEN *U,GEN *V,GEN *F, GEN a4, GEN a6, GEN fl, GEN p)
 }
 
 
-/************* Modular composition :returns g(h) mod f  **************/
-/* assumes that g,h,f are FpX's and  deg(f)>deg(g) deg(f)>deg(h) */
-
-static GEN
-mod_compose(GEN g, GEN h, GEN *eT,ulong n, GEN p)
-{
-  if(gequal0(g)) return g;
-  if(gequal0(h)) return h;
-  pari_sp ltop = avma;
-  GEN tau,v_h;
-  ulong l = degree(g),k1,k2,j;
-  long i;
-  if(l==0){avma = ltop;return g;}
-  l = l+1;
-  k1 = usqrt(l);
-  k2 = (l/k1)*k1==l ? l/k1 : l/k1+1;
-  tau = pol_0(0);
-  v_h = cgetg(k1+2,t_VEC);
-  gel(v_h,1) = pol_1(0);
-  for(i=2;i<k1+2;i++)
-    gel(v_h,i) = FpXQ_mul(gel(v_h,i-1),h,*eT,p);
-  i = k2-1;  
-  while(i>=0){
-    tau  = FpXQ_mul(tau,gel(v_h,k1+1),*eT,p);
-    for(j=0;j<k1;j++){
-      tau = FpX_add(tau,FpX_Fp_mul(gel(v_h,j+1),polcoeff0(g,i*k1+j,0),p),p);
-      }
-    i--;
-  }
-  return gerepileupto(ltop,tau);
-}
-
-/* another version of modular composition using matrix multiplication
-could be useful if fast matrix multiplication was implemented
-*/
-/*
-static GEN
-mod_compose_bis(GEN g, GEN h, GEN *eT,ulong n, GEN p)
-{
-  if(degree(g)<1) return g;
-  pari_sp ltop = avma;
-  GEN tmp1,res;
-  ulong i,j=0; 
-  ulong m = usqrt(n)+1;
-  tmp1 = h;
-  GEN A = zeromatcopy(m,n),B = zeromatcopy(m,m);
-  gcoeff(A,1,1)=gen_1;
-  for(i=1;i<m;i++){
-    for(j=0;j<=degree(tmp1);j++){gcoeff(A,i+1,j+1)=polcoeff0(tmp1,j,0);};
-    tmp1 = FpXQ_mul(tmp1,h,*eT,p);
-  }
-  for(i=0;i<m;i++){
-    for(j=0;j<m;j++){
-      gcoeff(B,i+1,j+1) = polcoeff0(g,i*m+j,0);
-    }
-  }
-  A = FpM_mul(B,A,p);
-  res = gtopolyrev(row(A,m),0);
-  for(i=1;i<m;i++){
-    res = FpX_add(FpX_mul(res,tmp1,p),gtopolyrev(row(A,m-i),0),p);
-  }
-  return gerepileupto(ltop,FpX_rem(res,*eT,p));
-}
-*/
-
 /* Testing rational equality */
 
 /* cf Shoup "Efficient computation of minimal polynomials in   */
@@ -683,46 +618,26 @@ mod_transp(GEN tau,GEN v,GEN h,GEN f,GEN p)
   }
 }
 
-/* radix_decomp returns the decomposition of a in base P */
-/* base_pow is a vector containing powers of P           */
-/* k MUST BE a power of 2 , t = log_2(k)+1               */
-static void
-radix_decomp(GEN a,GEN *base_pow,GEN *resu,GEN p,ulong i,ulong k,ulong t)
-{
-  GEN q,r;
-  if(k==1){ gel(*resu,i)=a;return;}
-  else{
-    q = FpX_divrem(a,gel(*base_pow,t),p,&r);
-    radix_decomp(q,base_pow,resu,p,i,k>>1,t-1);
-    radix_decomp(r,base_pow,resu,p,i+(k>>1),k>>1,t-1);
-  }
-}
 
 static GEN
 simplify_gcd(GEN a4,GEN a6,GEN fl,GEN *eF,GEN *Ft,GEN p)
 {
-  ulong n=degpol(fl),k=1,t=0,i;
-  while(3*k <= n){k = k<<1; t = t+1;}
-  GEN P0 = cgetg(k+1,t_VEC),P1 = cgetg(k+1,t_VEC),P2 = cgetg(k+1,t_VEC);
-  if(k==1){return mkvec3(FpX_Fp_mul(pol_1(0),polcoeff0(fl,0,0),p),FpX_Fp_mul(pol_1(0),polcoeff0(fl,1,0),p),FpX_Fp_mul(pol_1(0),polcoeff0(fl,2,0),p));}
   GEN P = mkpoln(4,gen_1,gen_0,a4,a6);
-  GEN resu = cgetg(k+1,t_VEC) , base_pow = cgetg(t+1,t_VEC);
-  gel(base_pow,1)=P;
-  for(i=2;i<=t;i++)
-    gel(base_pow,i) = FpX_sqr(gel(base_pow,i-1),p);
-  radix_decomp(fl,&base_pow,&resu,p,1,k,t);
-
+  GEN radix_decomp = FpX_digits(fl,P,p);
+  long k = lg(radix_decomp)-1;
+  ulong i;
+  GEN P0 = cgetg(k+1,t_VEC),P1 = cgetg(k+1,t_VEC),P2 = cgetg(k+1,t_VEC);
   for(i=1;i<=k;i++){
-    gel(P0,i) = polcoeff0(gel(resu,i),0,0);
-    gel(P1,i) = polcoeff0(gel(resu,i),1,0);    
-    gel(P2,i) = polcoeff0(gel(resu,i),2,0);
+    gel(P0,i) = polcoeff0(gel(radix_decomp,i),0,0);
+    gel(P1,i) = polcoeff0(gel(radix_decomp,i),1,0);    
+    gel(P2,i) = polcoeff0(gel(radix_decomp,i),2,0);
   }
-  P0 = RgV_to_RgX_reverse(P0,0);
-  P1 = RgV_to_RgX_reverse(P1,0);
-  P2 = RgV_to_RgX_reverse(P2,0);
-  P0 = mod_compose(P0,*Ft,eF,n,p);
-  P1 = mod_compose(P1,*Ft,eF,n,p);
-  P2 = mod_compose(P2,*Ft,eF,n,p);
+  P0 = RgV_to_RgX(P0,0);
+  P1 = RgV_to_RgX(P1,0);
+  P2 = RgV_to_RgX(P2,0);
+  P0 = FpX_FpXQ_eval(P0,*Ft,*eF,p);
+  P1 = FpX_FpXQ_eval(P1,*Ft,*eF,p);
+  P2 = FpX_FpXQ_eval(P2,*Ft,*eF,p);
   return mkvec3(P0,P1,P2);
 }
 
@@ -778,8 +693,8 @@ rational_equ(GEN *Xp,GEN *multiples,ulong *ir,ulong *jr, ulong m,ulong ell, GEN 
   }
   GEN cj,dj;
   for(j=1;j<=m;j++){
-    cj = RgX_to_RgC(mod_compose(gel(*multiples,2*j-1),*Xp,efl,n,p),n);
-    dj = RgX_to_RgC(mod_compose(gel(*multiples,2*j),*Xp,efl,n,p),n);
+    cj = RgX_to_RgC(FpX_FpXQ_eval(gel(*multiples,2*j-1),*Xp,*efl,p),n);
+    dj = RgX_to_RgC(FpX_FpXQ_eval(gel(*multiples,2*j),*Xp,*efl,p),n);
     for(i=1;i<=m;i++){
       if(gequal(FpV_FpC_mul(gel(Lw,2*i-1),dj,p),FpV_FpC_mul(gel(Lw,2*i),cj,p))){
 	*ir = i;*jr = j;
@@ -797,7 +712,7 @@ static ulong
 bsgs(GEN a4,GEN a6,ulong ell,GEN fl,GEN p)
 {
   pari_sp av = avma;
-  ulong eig,i,j,m = usqrt(ell)+1,n=degpol(fl);
+  ulong eig,i,j,m = usqrt(ell)+1;
   GEN U,V,F,multiples,Xp,Yp,Ft,eF,RHS;
   U = cgetg(m+1,t_VEC);V = cgetg(m+2,t_VEC);F = cgetg(m+3,t_VEC);
   eF = FpX_get_red(fl,p);
@@ -863,23 +778,23 @@ bsgs(GEN a4,GEN a6,ulong ell,GEN fl,GEN p)
 	  } else {
 	    tmp1 = FpXQ_mul(gel(F,j+2),gel(V,j-1),eF,p);
 	    tmp2 = FpXQ_mul(gel(F,j-2),gel(V,j+1),eF,p);
-	    jPy_num = FpXQ_mul(mod_compose(FpX_sub(tmp1,tmp2,p),Xp,&eF,n,p),Yp,eF,p);
-	    jPy_den = mod_compose(FpXQ_mul(gel(F,j),gel(V,j),eF,p),Xp,&eF,n,p);
+	    jPy_num = FpXQ_mul(FpX_FpXQ_eval(FpX_sub(tmp1,tmp2,p),Xp,eF,p),Yp,eF,p);
+	    jPy_den = FpX_FpXQ_eval(FpXQ_mul(gel(F,j),gel(V,j),eF,p),Xp,eF,p);
 	  }
 	} else {/*j even*/
 	  if(j==2){
 	    tmp1 = FpXQ_mul(gel(F,j+2),gel(V,j-1),eF,p);
-	    jPy_num = FpXQ_mul(mod_compose(tmp1,Xp,&eF,n,p),Yp,eF,p);
+	    jPy_num = FpXQ_mul(FpX_FpXQ_eval(tmp1,Xp,eF,p),Yp,eF,p);
 	    tmp1 = FpX_mulu(FpXQ_sqr(mkpoln(4,gen_1,gen_0,a4,a6),eF,p),16,p);
 	    tmp2 = FpXQ_mul(tmp1,FpXQ_mul(gel(F,j),gel(V,j),eF,p),eF,p);
-	    jPy_den = mod_compose(tmp2,Xp,&eF,n,p);
+	    jPy_den = FpX_FpXQ_eval(tmp2,Xp,eF,p);
 	  } else {
 	    tmp1 = FpXQ_mul(gel(F,j+2),gel(V,j-1),eF,p);
 	    tmp2 = FpXQ_mul(gel(F,j-2),gel(V,j+1),eF,p);
-	    jPy_num = FpXQ_mul(mod_compose(FpX_sub(tmp1,tmp2,p),Xp,&eF,n,p),Yp,eF,p);
+	    jPy_num = FpXQ_mul(FpX_FpXQ_eval(FpX_sub(tmp1,tmp2,p),Xp,eF,p),Yp,eF,p);
 	    tmp1 = FpX_mulu(FpXQ_sqr(mkpoln(4,gen_1,gen_0,a4,a6),eF,p),16,p);
 	    tmp2 = FpXQ_mul(tmp1,FpXQ_mul(gel(F,j),gel(V,j),eF,p),eF,p);
-	    jPy_den = mod_compose(tmp2,Xp,&eF,n,p);
+	    jPy_den = FpX_FpXQ_eval(tmp2,Xp,eF,p);
 	  }
 	}
 	if(gequal(FpXQ_mul(iPy_num,jPy_den,eF,p),FpXQ_mul(iPy_den,jPy_num,eF,p))){
@@ -947,8 +862,8 @@ compo_t(GEN g, ulong n, GEN *eF,ulong deg_f,GEN p)
   GEN tmp1 = pol_x(0);
   GEN tmp2 = g;
   while(n>0){
-    if(n%2==1){ tmp1 = mod_compose(tmp1,tmp2,eF,deg_f,p);}
-    tmp2 = mod_compose(tmp2,tmp2,eF,deg_f,p);
+    if(n%2==1){ tmp1 = FpX_FpXQ_eval(tmp1,tmp2,*eF,p);}
+    tmp2 = FpX_FpXQ_eval(tmp2,tmp2,*eF,p);
     n = n>>1;
   }
   return gerepileupto(ltop,tmp1);
@@ -966,11 +881,11 @@ vec_compo(GEN vec,ulong n, GEN *eF,ulong deg_f,GEN p)
   gel(v,2) = pol_1(0);
   while(n>0){
     if(n%2==1){
-      gel(v,1) = mod_compose(gel(v,1),gel(vec1,1),eF,deg_f,p);
-      gel(v,2) = FpXQ_mul(gel(vec1,2),mod_compose(gel(v,2),gel(vec1,1),eF,deg_f,p),*eF,p);
+      gel(v,1) = FpX_FpXQ_eval(gel(v,1),gel(vec1,1),*eF,p);
+      gel(v,2) = FpXQ_mul(gel(vec1,2),FpX_FpXQ_eval(gel(v,2),gel(vec1,1),*eF,p),*eF,p);
     }
-    gel(vec1,2) = FpXQ_mul(gel(vec1,2),mod_compose(gel(vec1,2),gel(vec1,1),eF,deg_f,p),*eF,p);
-    gel(vec1,1) = mod_compose(gel(vec1,1),gel(vec1,1),eF,deg_f,p);
+    gel(vec1,2) = FpXQ_mul(gel(vec1,2),FpX_FpXQ_eval(gel(vec1,2),gel(vec1,1),*eF,p),*eF,p);
+    gel(vec1,1) = FpX_FpXQ_eval(gel(vec1,1),gel(vec1,1),*eF,p);
     n = n>>1;
   }
   return gerepilecopy(ltop,v);
@@ -1044,12 +959,12 @@ T0X(GEN a4,GEN a6,ulong ell,ulong c,ulong q,ulong b,GEN *eF,ulong deg_f,GEN p)
     while(b>0){
       if(b%2==0)
 	{
-	  V = FpXQ_add(mod_compose(V,U,eF,deg_f,p),V,*eF,p);
-	  U = mod_compose(U,U,eF,deg_f,p);
+	  V = FpXQ_add(FpX_FpXQ_eval(V,U,*eF,p),V,*eF,p);
+	  U = FpX_FpXQ_eval(U,U,*eF,p);
 	} else {
-	W = FpXQ_add(mod_compose(W,U,eF,deg_f,p),V,*eF,p);
-	V = FpXQ_add(mod_compose(V,U,eF,deg_f,p),V,*eF,p);
-	U = mod_compose(U,U,eF,deg_f,p);
+	W = FpXQ_add(FpX_FpXQ_eval(W,U,*eF,p),V,*eF,p);
+	V = FpXQ_add(FpX_FpXQ_eval(V,U,*eF,p),V,*eF,p);
+	U = FpX_FpXQ_eval(U,U,*eF,p);
       }
       b = b>>1;
     }
@@ -1061,19 +976,19 @@ T0X(GEN a4,GEN a6,ulong ell,ulong c,ulong q,ulong b,GEN *eF,ulong deg_f,GEN p)
     while(b>0){
       if(b%2==0)
 	{
-	  gel(V,1) = FpXQ_add(gel(V,1),mod_compose(gel(V,1),gel(U,1),eF,deg_f,p),*eF,p);
-	  tmp1 = FpXQ_mul(gel(U,2),mod_compose(gel(V,2),gel(U,1),eF,deg_f,p),*eF,p);
+	  gel(V,1) = FpXQ_add(gel(V,1),FpX_FpXQ_eval(gel(V,1),gel(U,1),*eF,p),*eF,p);
+	  tmp1 = FpXQ_mul(gel(U,2),FpX_FpXQ_eval(gel(V,2),gel(U,1),*eF,p),*eF,p);
 	  gel(V,2) = FpXQ_add(tmp1,gel(V,2),*eF,p);
-	  gel(U,2) = FpXQ_mul(gel(U,2),mod_compose(gel(U,2),gel(U,1),eF,deg_f,p),*eF,p);
-	  gel(U,1) = mod_compose(gel(U,1),gel(U,1),eF,deg_f,p);
+	  gel(U,2) = FpXQ_mul(gel(U,2),FpX_FpXQ_eval(gel(U,2),gel(U,1),*eF,p),*eF,p);
+	  gel(U,1) = FpX_FpXQ_eval(gel(U,1),gel(U,1),*eF,p);
 	} else {
-	gel(W,1) = FpXQ_add(gel(V,1),mod_compose(gel(W,1),gel(U,1),eF,deg_f,p),*eF,p);
-	tmp1 = FpXQ_mul(gel(U,2),mod_compose(gel(W,2),gel(U,1),eF,deg_f,p),*eF,p);
+	gel(W,1) = FpXQ_add(gel(V,1),FpX_FpXQ_eval(gel(W,1),gel(U,1),*eF,p),*eF,p);
+	tmp1 = FpXQ_mul(gel(U,2),FpX_FpXQ_eval(gel(W,2),gel(U,1),*eF,p),*eF,p);
 	gel(W,2) = FpXQ_add(gel(V,2),tmp1,*eF,p);
-	gel(V,1) = FpXQ_add(gel(V,1),mod_compose(gel(V,1),gel(U,1),eF,deg_f,p),*eF,p);
-	gel(V,2) = FpXQ_add(gel(V,2),FpXQ_mul(gel(U,2),mod_compose(gel(V,2),gel(U,1),eF,deg_f,p),*eF,p),*eF,p);
-	gel(U,2) = FpXQ_mul(gel(U,2),mod_compose(gel(U,2),gel(U,1),eF,deg_f,p),*eF,p);
-	gel(U,1) = mod_compose(gel(U,1),gel(U,1),eF,deg_f,p);
+	gel(V,1) = FpXQ_add(gel(V,1),FpX_FpXQ_eval(gel(V,1),gel(U,1),*eF,p),*eF,p);
+	gel(V,2) = FpXQ_add(gel(V,2),FpXQ_mul(gel(U,2),FpX_FpXQ_eval(gel(V,2),gel(U,1),*eF,p),*eF,p),*eF,p);
+	gel(U,2) = FpXQ_mul(gel(U,2),FpX_FpXQ_eval(gel(U,2),gel(U,1),*eF,p),*eF,p);
+	gel(U,1) = FpX_FpXQ_eval(gel(U,1),gel(U,1),*eF,p);
       }
       b = b>>1;
     }
@@ -1088,7 +1003,7 @@ T1X(GEN a4,GEN a6,ulong ell,GEN e,ulong c,ulong q,GEN *eF,ulong deg_f,GEN p)
   if(q%2)
     {
       ulong qprime = (ell-1)/(2*q);
-      GEN ret = mod_compose(e,compo_t(gx(a4,a6,c,eF,p),qprime,eF,deg_f,p),eF,deg_f,p);
+      GEN ret = FpX_FpXQ_eval(e,compo_t(gx(a4,a6,c,eF,p),qprime,eF,deg_f,p),*eF,p);
       return gerepilecopy(av,ret);
     } else {
     ulong qprime = (ell-1)/(q);
@@ -1097,8 +1012,8 @@ T1X(GEN a4,GEN a6,ulong ell,GEN e,ulong c,ulong q,GEN *eF,ulong deg_f,GEN p)
     gel(v_tmp,2) = gy(a4,a6,c,eF,p);
     GEN pxy = vec_compo(v_tmp,qprime,eF,deg_f,p);
     GEN ret = cgetg(3,t_VEC);
-    gel(ret,1)= mod_compose(gel(e,1),gel(pxy,1),eF,deg_f,p);
-    gel(ret,2)= FpXQ_mul(gel(pxy,2),mod_compose(gel(e,2),gel(pxy,1),eF,deg_f,p),*eF,p);
+    gel(ret,1)= FpX_FpXQ_eval(gel(e,1),gel(pxy,1),*eF,p);
+    gel(ret,2)= FpXQ_mul(gel(pxy,2),FpX_FpXQ_eval(gel(e,2),gel(pxy,1),*eF,p),*eF,p);
     return gerepileupto(av,ret);
   }
 }
@@ -1154,40 +1069,19 @@ compute_C(GEN alpha,GEN beta,GEN M,GEN f,GEN *eF,GEN p)
   GEN v = vecslice(compute_trace(alpha,beta,f,eF,p),1,q);
   GEN R1 = polrecip(RgXn_mul(polrecip(M),gtopolyrev(v,0),q));
   GEN R2 = FpXQ_mul(R1,FpXQ_invsafe(FpX_deriv(M,p),M,p),M,p);
-  GEN r = Fp_div(pollead(beta,0),pollead(mod_compose(R2,alpha,eF,degpol(f),p),0),p);
+  GEN r = Fp_div(pollead(beta,0),pollead(FpX_FpXQ_eval(R2,alpha,*eF,p),0),p);
   return gerepileupto(av,FpX_Fp_mul(R2,r,p));
 }
 
-/* Computing minimal polynomial */
-
-/* Berlekamp-Massey algorithm : computes minimal polynomial of */
-/* the sequence (s_0,s_1,...,s_{2*n-1})  */
-static GEN
-ber_mass(ulong n,GEN s, GEN p)
-{
-  pari_sp ltop = avma;
-  GEN R,R0,R1,V,V0,V1,Q;
-  R0 = gtopoly(vec_ei(2*n+1,1),0);
-  R1 = gtopoly(s,0);
-  V0 = pol_0(0);
-  V1 = pol_1(0);
-  while(n<=degpol(R1)){
-    Q = FpX_divrem(R0,R1,p,&R);
-    V = FpX_sub(V0,FpX_mul(Q,V1,p),p);
-    V0 = V1;
-    V1 = V;
-    R0 = R1;
-    R1 = R;
-  }
-  return gerepileupto(ltop,FpX_normalize(V1,p));
-}
-
+/* Computing minimal polynomial:                          */
 /* cf Shoup 'Efficient Computation of Minimal Polynomials */
-/*          in Algebraic Extensions of Finite Fields'  */
+/*          in Algebraic Extensions of Finite Fields'     */
 static GEN
 compute_min_pol(GEN alpha, GEN f,GEN p)
 {
   pari_sp ltop = avma;
+  long vf = varn(f) , va = varn(alpha);
+  setvarn(alpha,0);
   if(gequal(alpha,pol_x(0)))
     return f;
   ulong n = degpol(f),i,j,m;
@@ -1221,10 +1115,12 @@ compute_min_pol(GEN alpha, GEN f,GEN p)
       v = mod_transp(gel(v_alpha,k1+1),v,h,f,p);
     }
     /* now c contains <v,alpha^i> , i = 0..m-1  */
-    g_prime = ber_mass(m/2,c,p);
+    g_prime = gmael(FpX_halfgcd(gtopoly(vec_ei(m+1,1),0),gtopoly(c,0),p),2,2);
     g = FpX_mul(g,g_prime,p);
-    tau = FpXQ_mul(tau,mod_compose(g_prime,alpha,&eF,n,p),eF,p);
+    tau = FpXQ_mul(tau,FpX_FpXQ_eval(g_prime,alpha,eF,p),eF,p);
   }
+  setvarn(f,vf);
+  setvarn(alpha,va);
   return gerepileupto(ltop,g);
 }
 
@@ -1239,7 +1135,7 @@ bsgs_mms(GEN C,GEN M,GEN *eM,GEN Tp,ulong q,GEN p)
   
   gel(Ci,1) = pol_x(0);
   for(i=2;i<r+2;i++){
-    gel(Ci,i) = mod_compose(gel(Ci,i-1),C,eM,dm,p);
+    gel(Ci,i) = FpX_FpXQ_eval(gel(Ci,i-1),C,*eM,p);
   }
   GEN C_tilde = compo_t(C,q-r,eM,dm,p);
   GEN C_tj = pol_x(0);
@@ -1249,8 +1145,8 @@ bsgs_mms(GEN C,GEN M,GEN *eM,GEN Tp,ulong q,GEN p)
     for(i=0;i<r+1;i++){
       if(gequal(gel(Ci,i+1),T_pj)){avma = av; return i+j*r;}
     }   
-    C_tj = mod_compose(C_tj,C_tilde,eM,dm,p);
-    T_pj = mod_compose(Tp,C_tj,eM,dm,p);
+    C_tj = FpX_FpXQ_eval(C_tj,C_tilde,*eM,p);
+    T_pj = FpX_FpXQ_eval(Tp,C_tj,*eM,p);
   }
   pari_printf("search failed!");
   avma = av;
@@ -1272,7 +1168,7 @@ log_eigenvalue(GEN a4,GEN a6,ulong c,ulong q,ulong ell,GEN f_l,GEN *eFl,GEN p)
     GEN eM = FpX_get_red(M,p);
     if (degree(M)<0){pari_err_BUG("log_eigenvalue (minpol)");return(-1);}
     GEN C = compute_C(e0,e1,M,f_l,eFl,p);
-    if(!RgX_equal(mod_compose(C,e0,eFl,df,p),e1)){
+    if(!RgX_equal(FpX_FpXQ_eval(C,e0,*eFl,p),e1)){
       pari_err_BUG("log eigenvalue (C(e0)!=e1)");avma = av;return(-2);
     }
     GEN Tp = FpXQ_pow(pol_x(0),p,eM,p);
@@ -1288,14 +1184,14 @@ log_eigenvalue(GEN a4,GEN a6,ulong c,ulong q,ulong ell,GEN f_l,GEN *eFl,GEN p)
     GEN e0b = FpXQ_mul(mkpoln(4,gen_1,gen_0,a4,a6),FpXQ_sqr(e0,*eFl,p),*eFl,p);
     GEN e1b =  FpXQ_div(e1,e0,*eFl,p);
     GEN N = compute_min_pol(e0b,f_l,p);/*FpXQ_minpoly(e0b,f_l,p);*/
-    GEN M = gsubst(N,0,FpX_mul(pol_x(0),pol_x(0),p));
+    GEN M = RgX_inflate(N,2);
     GEN eM = FpX_get_red(M,p);
     if (degree(N)<0){pari_err_BUG("log_eigenvalue (minpol)"); avma = av;return(-1);}
     GEN D = compute_C(e0b,e1b,N,f_l,eFl,p);
-    GEN C = FpX_mul(pol_x(0),gsubst(D,0,FpX_mul(pol_x(0),pol_x(0),p)),p);
+    GEN C = FpX_mul(pol_x(0),RgX_inflate(D,2),p);
     if(gequal0(C)){pari_err_BUG("log eigenvalue (compute_C)"); avma = av; return(-2);}
     GEN A = FpXQ_pow(pol_x(0),shifti(p,-1),N,p);
-    GEN Tp = FpXQ_mul(pol_x(0),mod_compose(A,FpX_mul(pol_x(0),pol_x(0),p),&eM,degpol(M),p),eM,p);
+    GEN Tp = FpXQ_mul(pol_x(0),FpX_FpXQ_eval(A,FpX_mul(pol_x(0),pol_x(0),p),eM,p),eM,p);
     long v= bsgs_mms(C,M,&eM,Tp,degpol(M),p);
     if (v>=0){avma = av; return (qprime*v % q);}
     else {avma = av;pari_err_BUG("log eigenvalue (bsgs_mms)");return(-3);}
@@ -1305,7 +1201,6 @@ log_eigenvalue(GEN a4,GEN a6,ulong c,ulong q,ulong ell,GEN f_l,GEN *eFl,GEN p)
 static ulong
 find_eigenvalue(GEN a4,GEN a6,ulong ell,GEN f,GEN p)
 {
-  if(ell==3) return bsgs(a4,a6,ell,f,p);
   pari_sp av = avma;
   ulong c = compute_gen(ell);
   ulong q1 = choose_q(ell);
